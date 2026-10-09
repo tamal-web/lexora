@@ -43,7 +43,7 @@ import {
   CommandList,
 } from "./ui/command"
 import { ClientSwitcher } from "./client-switcher"
-import { clients } from "@/lib/data"
+import { api, ApiClient } from "@/lib/api"
 
 // This is sample data.
 //
@@ -133,10 +133,10 @@ const data = {
           title: "Chat",
           url: "/chats",
         },
-        {
-          title: "Imports",
-          url: "/imports",
-        },
+        // {
+        //   title: "Imports",
+        //   url: "/imports",
+        // },
       ],
     },
   ],
@@ -156,7 +156,17 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const [clients, setClients] = React.useState<ApiClient[]>([])
   const path = usePathname()
+
+  // Fetch clients from backend on mount
+  useEffect(() => {
+    api
+      .clients()
+      .then(setClients)
+      .catch(() => { })
+  }, [])
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -169,17 +179,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   }, [])
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="mt-2 flex flex-col">
+    <Sidebar collapsible="icon" variant="floating" {...props}>
+      <SidebarHeader className="group mt-2 flex flex-col">
         <div className="flex flex-row items-center justify-between">
-          <ClientSwitcher clients={clients} />
-          {/*
-           *           <TeamSwitcher teams={data.teams} />
-
-           */}
+          <ClientSwitcher
+            clients={clients}
+            className="group-data-[collapsible=icon]:group-hover:hidden"
+          />
           <SidebarTrigger
             size={"lg"}
-            className={"group-data-[collapsible=icon]:hidden"}
+            className={
+              "group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:group-hover:flex"
+            }
           />
         </div>
         <Button

@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/button"
 import { features, type DataTableFeatures } from "./data-table-features"
 
 interface DataTableProps<TData extends RowData> {
-  columns: ColumnDef<DataTableFeatures, TData>[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  columns: ColumnDef<any, any>[]
   data: TData[]
 }
 
@@ -32,6 +33,7 @@ export function DataTable<TData extends RowData>({
     columns,
     initialState: {
       pagination: {
+        pageIndex: 0,
         pageSize: 10,
       },
     },

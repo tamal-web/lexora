@@ -3,15 +3,10 @@
 import { BorderBeam } from "border-beam"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { useRouter } from "next/navigation"
 import {
   ArrowUp,
   AtSignIcon,
-  CalendarIcon,
-  Check,
-  CheckCircle2,
   Circle,
-  Clock,
   FileIcon,
   FolderIcon,
   MailIcon,
@@ -23,254 +18,25 @@ import {
   TargetIcon,
   X,
 } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
 import { MetalFx } from "metal-fx"
 import { Liquid } from "liquid-gooey"
 import { useTheme } from "next-themes"
+import { deadlines } from "@/lib/data"
+import { DeadlineBox } from "../matters/page"
 import { MatterTree } from "@/components/matter-tree"
-import { MessageBubble, useAgentChat, apiCreateConversation } from "@/components/agent-chat"
-import { MentionPicker, MentionItem } from "@/components/mention-picker"
+import { MessageBubble, useAgentChat } from "@/components/agent-chat"
 import { cn } from "@/lib/utils"
-import { useApi } from "@/lib/use-api"
-import { api, ApiDeadline } from "@/lib/api"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-
-/* ─── Deadline status colours ────────────────────────────────────────────── */
-function statusColor(status: string) {
-  switch (status) {
-    case "OVERDUE":
-      return "border-l-red-500"
-    case "DUE_SOON":
-      return "border-l-amber-500"
-    case "COMPLETED":
-      return "border-l-emerald-500"
-    case "DOCKETED":
-      return "border-l-blue-500"
-    default:
-      return "border-l-gray-400"
-  }
-}
-
-function badgeColor(status: string) {
-  switch (status) {
-    case "OVERDUE": return "bg-red-500/10 text-red-600 dark:text-red-400"
-    case "DUE_SOON": return "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-    case "COMPLETED": return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-    case "DOCKETED": return "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-    default: return "bg-gray-500/10 text-gray-600 dark:text-gray-400"
-  }
-}
-
-function priorityDot(priority: string) {
-  switch (priority) {
-    case "CRITICAL":
-      return "bg-red-500"
-    case "STANDARD":
-      return "bg-amber-400"
-    default:
-      return "bg-gray-300"
-  }
-}
-
-async function patchDeadline(id: string, body: object) {
-  const res = await fetch(`http://localhost:8000/api/deadlines/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-/* ─── Enhanced dashboard deadline card ────────────────────────────────────── */
-function DashboardDeadlineCard({
-  d,
-  onUpdated,
-}: {
-  d: ApiDeadline
-  onUpdated: () => void
-}) {
-  const [rescheduleOpen, setRescheduleOpen] = useState(false)
-  const [newDate, setNewDate] = useState(d.due_date?.slice(0, 10) ?? "")
-  const [saving, setSaving] = useState(false)
-  const isComplete = d.status === "COMPLETED"
-
-  const dueDate = d.due_date ? new Date(d.due_date) : null
-  const daysLeft = dueDate
-    ? Math.ceil((dueDate.getTime() - Date.now()) / 86_400_000)
-    : null
-
-  async function markComplete() {
-    setSaving(true)
-    try {
-      await patchDeadline(d.id, { status: "COMPLETED" })
-      onUpdated()
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function reschedule() {
-    if (!newDate) return
-    setSaving(true)
-    try {
-      await patchDeadline(d.id, { due_date: newDate, status: "UPCOMING" })
-      onUpdated()
-      setRescheduleOpen(false)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div
-      className={cn(
-        "group flex flex-col gap-1.5 rounded-lg border border-border bg-card hover:bg-accent/50 p-3 transition-colors border-l-4 shadow-sm",
-        statusColor(d.status ?? "")
-      )}
-    >
-      {/* Title row */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span
-            className={cn(
-              "mt-1 size-2 shrink-0 rounded-full",
-              priorityDot(d.priority ?? "")
-            )}
-          />
-          <span className="line-clamp-2 text-[0.8rem] leading-tight font-medium">
-            {d.title}
-          </span>
-        </div>
-        {/* Actions */}
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          {/* Mark complete */}
-          {!isComplete && (
-            <button
-              onClick={markComplete}
-              disabled={saving}
-              title="Mark complete"
-              className="rounded p-1 hover:bg-black/10 dark:hover:bg-white/10"
-            >
-              <CheckCircle2 className="size-3.5" />
-            </button>
-          )}
-          {/* Reschedule */}
-          <Popover open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
-            <PopoverTrigger
-              title="Reschedule"
-              className="rounded p-1 hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer"
-            >
-              <CalendarIcon className="size-3.5" />
-            </PopoverTrigger>
-            <PopoverContent className="w-52 p-3" side="right">
-              <p className="mb-2 text-xs font-medium">Reschedule deadline</p>
-              <Input
-                type="date"
-                value={newDate}
-                onChange={(e) => setNewDate(e.target.value)}
-                className="mb-2 h-7 text-xs"
-              />
-              <Button
-                size="sm"
-                className="h-7 w-full text-xs"
-                onClick={reschedule}
-                disabled={saving}
-              >
-                {saving ? "Saving…" : "Confirm"}
-              </Button>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
-
-      {/* Meta row */}
-      <div className="flex items-center gap-3 text-[0.7rem] opacity-70">
-        {/* Due date */}
-        <span className="flex items-center gap-0.5">
-          <Clock className="size-2.5" />
-          {dueDate
-            ? dueDate.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-            : "—"}
-        </span>
-        {/* Days left */}
-        {daysLeft !== null && !isComplete && (
-          <span
-            className={cn(
-              "font-medium",
-              daysLeft < 0
-                ? "text-red-500"
-                : daysLeft <= 7
-                  ? "text-amber-600"
-                  : ""
-            )}
-          >
-            {daysLeft < 0
-              ? `${Math.abs(daysLeft)}d overdue`
-              : daysLeft === 0
-                ? "Today"
-                : `${daysLeft}d left`}
-          </span>
-        )}
-        {/* Status badge */}
-        <span className="ml-auto rounded-full border px-1.5 py-0.5 text-[0.6rem] font-medium tracking-wide uppercase">
-          {(d.status ?? "").replace(/_/g, " ")}
-        </span>
-      </div>
-
-      {/* Action type */}
-      {d.action_type && (
-        <div className="text-[0.68rem] opacity-50">
-          {d.action_type.replace(/_/g, " ")}
-        </div>
-      )}
-
-      {/* Description */}
-      {d.description && (
-        <p className="line-clamp-2 text-[0.7rem] leading-snug opacity-60">
-          {d.description}
-        </p>
-      )}
-    </div>
-  )
-}
 
 export default function Page() {
   const { resolvedTheme } = useTheme()
-  const { data: rawDeadlines, refetch: refetchDeadlines } = useApi(
-    api.deadlines
-  )
-  const apiDeadlines: ApiDeadline[] = (rawDeadlines || []) as ApiDeadline[]
-
-  const router = useRouter()
   const { messages, isStreaming, backendOnline, send, stop, clear } =
-    useAgentChat({
-      onConversationCreated: (id) => {
-        // Update URL to the new chat page without triggering a React unmount,
-        // so the active stream can continue and save completely to the DB.
-        window.history.pushState(null, "", `/chats/${id}`)
-      },
-    })
+    useAgentChat()
 
-  const [deadlineFilter, setDeadlineFilter] = useState("UNCOMPLETED")
   const [open, setOpen] = useState(false)
   const [speechStarted, setSpeechStarted] = useState<boolean>(false)
   const [prompt, setPrompt] = useState("")
   const [context, setContext] = useState("") // pasted email / document text
-  const [mentions, setMentions] = useState<MentionItem[]>([]) // @-mentioned entities
   const recognitionRef = useRef<any>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -332,34 +98,12 @@ export default function Page() {
   }
 
   // ── Submit ───────────────────────────────────────────────────────────────
-  const submit = async () => {
+  const submit = () => {
     if (isStreaming) return stop()
     const text = prompt.trim()
     if (!text) return
     setPrompt("")
-
-    let mentionCtx = context
-    if (mentions.length > 0) {
-      const mentionLines = mentions.map(
-        (m) => `- @${m.label} → type: ${m.type}, id: ${m.id}`
-      )
-      const mentionBlock = `\n\n[Mentioned entities]\n${mentionLines.join("\n")}`
-      mentionCtx = (mentionCtx + mentionBlock).trim()
-    }
-
-    try {
-      const conv = await apiCreateConversation("New Chat")
-      sessionStorage.setItem(
-        "init_prompt_" + conv.id,
-        JSON.stringify({ text, context: mentionCtx || undefined })
-      )
-      router.push(`/chats/${conv.id}`)
-    } catch {
-      // fallback if backend fails
-      send(text, mentionCtx || undefined)
-    }
-
-    setMentions([])
+    send(text, context)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -388,49 +132,14 @@ export default function Page() {
         </div>
       </div>
       <div className="flex flex-col items-start justify-start gap-2 p-2">
-        <div className="ml-2 flex w-full flex-row items-center justify-between pr-3">
-          <div className="flex flex-row items-center justify-start gap-1 opacity-70">
-            <TargetIcon className="size-4" />
-            <h1 className="text-[0.9rem] font-medium">Deadlines</h1>
-          </div>
-          <Select value={deadlineFilter} onValueChange={(val) => val && setDeadlineFilter(val)}>
-            <SelectTrigger className="h-6 w-24 text-[0.65rem]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="UNCOMPLETED" className="text-[0.7rem]">Pending</SelectItem>
-              <SelectItem value="ALL" className="text-[0.7rem]">All</SelectItem>
-              <SelectItem value="OVERDUE" className="text-[0.7rem]">Overdue</SelectItem>
-              <SelectItem value="DUE_SOON" className="text-[0.7rem]">Due Soon</SelectItem>
-              <SelectItem value="COMPLETED" className="text-[0.7rem]">Completed</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="ml-2 flex flex-row items-center justify-start gap-1 opacity-70">
+          <TargetIcon className="size-4" />
+          <h1 className="text-[0.9rem] font-medium">Deadlines</h1>
         </div>
-        <div className="flex max-h-[20rem]! w-72 flex-col items-stretch justify-start gap-2 overflow-y-auto overscroll-none rounded-[0.75rem] p-1">
-          {apiDeadlines.length === 0 ? (
-            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-              No deadlines found
-            </p>
-          ) : (
-            [...apiDeadlines]
-              .filter((d) => {
-                if (deadlineFilter === "ALL") return true;
-                if (deadlineFilter === "UNCOMPLETED") return d.status !== "COMPLETED";
-                return d.status === deadlineFilter;
-              })
-              .sort(
-                (a, b) =>
-                  new Date(a.due_date).getTime() -
-                  new Date(b.due_date).getTime()
-              )
-              .map((d) => (
-                <DashboardDeadlineCard
-                  key={d.id}
-                  d={d}
-                  onUpdated={refetchDeadlines}
-                />
-              ))
-          )}
+        <div className="flex max-h-[20rem]! flex-col items-stretch justify-start gap-2 overflow-y-scroll! overscroll-none rounded-[1rem] p-2">
+          {deadlines.map((d, i) => (
+            <DeadlineBox d={d} key={i} className="hover:dark:bg-neutral-800" />
+          ))}
         </div>
       </div>
     </div>
@@ -520,13 +229,12 @@ export default function Page() {
           className="w-full max-w-[34rem] overflow-visible!"
         >
           <div className="relative flex w-full flex-col rounded-[1.5rem] border border-border/80 bg-white p-3 shadow-[0_0_13px_rgba(0,0,0,0.08)] dark:border-border/50 dark:bg-neutral-900 dark:shadow-none">
-            <MentionPicker
+            <Textarea
               value={prompt}
-              onChange={setPrompt}
-              onMentionsChange={setMentions}
+              onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               className="mb-[0.5rem] max-h-40 min-h-2 w-full resize-none border-0! bg-transparent! pt-2 pb-2 text-[0.94rem]! ring-0! outline-0!"
-              placeholder="What do you want to do?"
+              placeholder="Ask about cases, deadlines, or tell me to draft a document…"
             />
 
             <div className="flex flex-row items-center justify-between">

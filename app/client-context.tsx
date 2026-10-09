@@ -10,7 +10,7 @@ type ClientContextType = {
 const ClientContext = createContext<ClientContextType | undefined>(undefined)
 
 export function ClientProvider({ children }: { children: ReactNode }) {
-  const [client, setClient] = useState("cli_014")
+  const [client, setClient] = useState("all-clients")
 
   return (
     <ClientContext.Provider value={{ client, setClient }}>

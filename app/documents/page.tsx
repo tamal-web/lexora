@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import {
   ChevronRight,
   Download,
@@ -10,6 +10,7 @@ import {
   FileText,
   FileType,
   FolderOpen,
+  Loader2,
   MoreHorizontal,
   Plus,
   Search,
@@ -70,32 +71,25 @@ import {
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-import type { Document, DocumentType, DocumentStatus } from "@/lib/models"
+import type { ApiDocument, ApiMatter, ApiClient, ApiUser } from "@/lib/api"
+import { api } from "@/lib/api"
 
 import {
-  documents,
   documentVersions,
-  matters,
-  users,
-  clients,
 } from "@/lib/data"
 
-import type { TreeNode } from "../page"
+// TreeNode type defined locally
+interface TreeNode {
+  name: string
+  isFolder: boolean
+  children?: TreeNode[]
+}
 
 /* ============================================================
    MATTER TREE
 ============================================================ */
 
-const fileTreeData: TreeNode[] = [
-  {
-    name: "All Matters",
-    isFolder: true,
-    children: matters.map((matter) => ({
-      name: matter.matter_number,
-      isFolder: false,
-    })),
-  },
-]
+
 
 /* ============================================================
    HELPERS
@@ -111,25 +105,15 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function formatDate(date: Date) {
+function formatDate(dateStr: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(date)
+  }).format(new Date(dateStr))
 }
 
-function getMatter(matterId?: string) {
-  return matters.find((matter) => matter.id === matterId)
-}
 
-function getClient(clientId?: string) {
-  return clients.find((client) => client.id === clientId)
-}
-
-function getUser(userId?: string) {
-  return users.find((user) => user.id === userId)
-}
 
 function getFileIcon(mimeType: string) {
   if (mimeType === "application/pdf") {
@@ -155,7 +139,7 @@ function getFileIcon(mimeType: string) {
   return <FileText className="h-4 w-4" />
 }
 
-function documentTypeLabel(type: DocumentType) {
+function documentTypeLabel(type: string) {
   return type
     .toLowerCase()
     .split("_")
@@ -163,7 +147,7 @@ function documentTypeLabel(type: DocumentType) {
     .join(" ")
 }
 
-function statusBadge(status: DocumentStatus) {
+function statusBadge(status: string) {
   switch (status) {
     case "FINAL":
       return (
@@ -193,11 +177,52 @@ function statusBadge(status: DocumentStatus) {
 ============================================================ */
 
 export default function DocumentsPage() {
+  const [documents, setDocuments] = useState<ApiDocument[]>([])
+  const [matters, setMatters] = useState<ApiMatter[]>([])
+  const [clients, setClients] = useState<ApiClient[]>([])
+  const [users, setUsers] = useState<ApiUser[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([api.documents(), api.matters(), api.clients(), api.users()])
+      .then(([docsData, mattersData, clientsData, usersData]) => {
+        setDocuments(docsData)
+        setMatters(mattersData)
+        setClients(clientsData)
+        setUsers(usersData)
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
+
+  const fileTreeData: TreeNode[] = useMemo(() => [
+    {
+      name: "All Matters",
+      isFolder: true,
+      children: matters.map((matter) => ({
+        name: matter.matter_number,
+        isFolder: false,
+      })),
+    },
+  ], [matters])
+
+  function getMatter(matterId?: string | null) {
+    return matters.find((matter) => matter.id === matterId)
+  }
+
+  function getClient(clientId?: string | null) {
+    return clients.find((client) => client.id === clientId)
+  }
+
+  function getUser(userId?: string | null) {
+    return users.find((user) => user.id === userId)
+  }
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const [selectedMatterId] = useState<string>("ALL")
 
-  const [selectedDocument, setSelectedDocument] = useState<Document | null>(
+  const [selectedDocument, setSelectedDocument] = useState<ApiDocument | null>(
     null
   )
 
@@ -218,12 +243,12 @@ export default function DocumentsPage() {
       .filter((document) => {
         if (
           selectedMatterId !== "ALL" &&
-          document.matterId !== selectedMatterId
+          document.matter_id !== selectedMatterId
         ) {
           return false
         }
 
-        if (typeFilter !== "ALL" && document.type !== typeFilter) {
+        if (typeFilter !== "ALL" && document.document_type !== typeFilter) {
           return false
         }
 
@@ -235,13 +260,12 @@ export default function DocumentsPage() {
           return true
         }
 
-        const matter = getMatter(document.matterId)
-        const client = getClient(document.clientId)
+        const matter = getMatter(document.matter_id)
+        const client = getClient(document.client_id)
 
         return [
-          document.name,
-          document.fileName,
-          document.description,
+          document.title,
+          document.file_name,
           matter?.matter_number,
           matter?.title,
           client?.name,
@@ -250,7 +274,7 @@ export default function DocumentsPage() {
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(query))
       })
-      .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime())
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
   }, [search, selectedMatterId, typeFilter, statusFilter])
 
   /* ============================================================
@@ -266,7 +290,7 @@ export default function DocumentsPage() {
   ).length
 
   const recentlyUpdated = documents.filter((document) => {
-    const diff = Date.now() - document.updated_at.getTime()
+    const diff = Date.now() - new Date(document.updated_at).getTime()
 
     const days = diff / (1000 * 60 * 60 * 24)
 
@@ -285,6 +309,14 @@ export default function DocumentsPage() {
       .filter((version) => version.documentId === selectedDocument.id)
       .sort((a, b) => b.versionNumber - a.versionNumber)
     : []
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full min-h-0 min-w-0 flex-1 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -459,7 +491,7 @@ export default function DocumentsPage() {
                       <div className="flex min-w-0 flex-wrap gap-2">
                         <Select
                           value={typeFilter}
-                          onValueChange={setTypeFilter}
+                          onValueChange={(val) => val && setTypeFilter(val)}
                         >
                           <SelectTrigger className="w-[180px]">
                             <SelectValue placeholder="Document type" />
@@ -492,7 +524,7 @@ export default function DocumentsPage() {
 
                         <Select
                           value={statusFilter}
-                          onValueChange={setStatusFilter}
+                          onValueChange={(val) => val && setStatusFilter(val)}
                         >
                           <SelectTrigger className="w-[140px]">
                             <SelectValue placeholder="Status" />
@@ -582,7 +614,7 @@ export default function DocumentsPage() {
                             </TableRow>
                           ) : (
                             filteredDocuments.map((document) => {
-                              const matter = getMatter(document.matterId)
+                              const matter = getMatter(document.matter_id)
 
                               return (
                                 <TableRow
@@ -593,16 +625,16 @@ export default function DocumentsPage() {
                                   <TableCell>
                                     <div className="flex min-w-0 items-center gap-3">
                                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40">
-                                        {getFileIcon(document.mimeType)}
+                                        {getFileIcon(document.file_type)}
                                       </div>
 
                                       <div className="min-w-0">
                                         <div className="truncate font-medium">
-                                          {document.name}
+                                          {document.title}
                                         </div>
 
                                         <div className="truncate text-xs text-muted-foreground">
-                                          {document.fileName}
+                                          {document.file_name}
                                         </div>
                                       </div>
                                     </div>
@@ -610,7 +642,7 @@ export default function DocumentsPage() {
 
                                   <TableCell>
                                     <span className="text-sm whitespace-nowrap">
-                                      {documentTypeLabel(document.type)}
+                                      {documentTypeLabel(document.document_type)}
                                     </span>
                                   </TableCell>
 
@@ -637,7 +669,7 @@ export default function DocumentsPage() {
                                       variant="outline"
                                       className="font-normal"
                                     >
-                                      v{document.version}
+                                      v1
                                     </Badge>
                                   </TableCell>
 
@@ -651,15 +683,7 @@ export default function DocumentsPage() {
                                     onClick={(event) => event.stopPropagation()}
                                   >
                                     <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8"
-                                        >
-                                          <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
+                                      <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md p-0 text-sm font-medium hover:bg-accent hover:text-accent-foreground focus-visible:outline-none"><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
 
                                       <DropdownMenuContent align="end">
                                         <DropdownMenuItem>

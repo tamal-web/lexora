@@ -1,13 +1,11 @@
+"use client"
+
 import * as React from "react"
-import {
-  Folder,
-  FolderOpen,
-  File,
-  ChevronRight,
-  ChevronDown,
-} from "lucide-react"
-import { Matter } from "@/lib/models"
-import { deadlines, documents, matters } from "@/lib/data"
+import { Folder, FolderOpen, ChevronRight, ChevronDown, Loader2 } from "lucide-react"
+import { useApi } from "@/lib/use-api"
+import { api } from "@/lib/api"
+import Link from "next/link"
+
 const typesList = [
   { id: "PATENT_UTILITY", title: "Utility Patent" },
   { id: "PATENT_DESIGN", title: "Design Patent" },
@@ -27,25 +25,32 @@ const typesList = [
   { id: "OTHER", title: "Other" },
 ]
 
-function MatterNode({ m }: { m: Matter }) {
+function MatterNode({ m }: { m: { id: string; title: string; status: string } }) {
   return (
-    <div className="w-full">
-      <div className="flex cursor-pointer items-center gap-1 rounded-sm px-2 py-1 text-sm font-medium transition-colors select-none hover:bg-accent hover:text-accent-foreground">
-        <div className="rounded-sm p-0.5 text-muted-foreground/70 hover:bg-muted"></div>
-
-        <FolderOpen className="text-amber-500-- size-4! fill-amber-500/20 fill-purple-400/20 text-purple-400" />
-
-        <span className="line-clamp-1 text-[0.8rem]">{m.title}</span>
-      </div>
-    </div>
+    <Link
+      href={`/matters/${m.id}`}
+      className="flex cursor-pointer items-center gap-1 rounded-sm px-2 py-1 text-sm font-medium transition-colors select-none hover:bg-accent hover:text-accent-foreground"
+    >
+      <div className="rounded-sm p-0.5 text-muted-foreground/70 hover:bg-muted"></div>
+      <FolderOpen className="size-4! fill-purple-400/20 text-purple-400" />
+      <span className="line-clamp-1 text-[0.8rem]">{m.title}</span>
+      <span className="ml-auto text-[0.7rem] text-muted-foreground opacity-60">{m.status}</span>
+    </Link>
   )
 }
 
-function FileTreeNode({ title, id }: { title: string; id: string }) {
+function FileTreeNode({
+  title,
+  id,
+  matters,
+}: {
+  title: string
+  id: string
+  matters: { id: string; title: string; type: string; status: string }[]
+}) {
   const [isOpen, setIsOpen] = React.useState(false)
-  if (!(matters.filter((m) => m.type == id).length > 0)) {
-    return
-  }
+  const filtered = matters.filter((m) => m.type === id)
+  if (filtered.length === 0) return null
 
   return (
     <div className="w-full">
@@ -62,21 +67,20 @@ function FileTreeNode({ title, id }: { title: string; id: string }) {
         </div>
 
         {isOpen ? (
-          <FolderOpen className="text-amber-500-- h-4 w-4 fill-amber-500/20 fill-purple-400/20 text-purple-400" />
+          <FolderOpen className="h-4 w-4 fill-purple-400/20 text-purple-400" />
         ) : (
-          <Folder className="text-amber-500-- fill-amber-500/20-- h-4 w-4 fill-purple-400/20 text-purple-400" />
+          <Folder className="h-4 w-4 fill-purple-400/20 text-purple-400" />
         )}
 
         <span>{title}</span>
+        <span className="ml-auto text-[0.7rem] text-muted-foreground opacity-60">{filtered.length}</span>
       </div>
 
       {isOpen && (
         <div className="relative mt-0.5 ml-[14px] flex flex-col gap-0.5 border-l border-border/60 pl-4">
-          {matters
-            .filter((m) => m.type == id)
-            .map((m, index) => (
-              <MatterNode m={m} key={index} />
-            ))}
+          {filtered.map((m, index) => (
+            <MatterNode m={m} key={index} />
+          ))}
         </div>
       )}
     </div>
@@ -84,11 +88,22 @@ function FileTreeNode({ title, id }: { title: string; id: string }) {
 }
 
 export function MatterTree() {
+  const { data: rawMatters, loading } = useApi(api.matters)
+  const matters = (rawMatters || []) as { id: string; title: string; type: string; status: string }[]
+
+  if (loading) {
+    return (
+      <div className="flex w-72 items-center justify-center py-4">
+        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
   return (
     <div className="w-72">
       <div className="flex flex-col gap-0.5">
         {typesList.map((t, index) => (
-          <FileTreeNode key={index} title={t.title} id={t.id} />
+          <FileTreeNode key={index} title={t.title} id={t.id} matters={matters} />
         ))}
       </div>
     </div>

@@ -7,6 +7,7 @@ import {
   CreditCard,
   DollarSign,
   FileText,
+  Loader2,
   MoreHorizontal,
   Receipt,
   Search,
@@ -14,32 +15,11 @@ import {
   WalletCards,
 } from "lucide-react"
 
-import {
-  users,
-  clients,
-  matters,
-  billingRates,
-  billingArrangements,
-  timeEntries,
-  expenses,
-  invoices,
-  invoiceLineItems,
-  payments,
-} from "@/lib/data"
-
-import type {
-  BillingArrangement,
-  BillingRate,
-  Expense,
-  Invoice,
-  InvoiceLineItem,
-  Payment,
-  TimeEntry,
-} from "@/lib/models"
-
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { DataTable } from "./data-table"
+import { InvoiceSheet, TimeEntrySheet, ExpenseSheet } from "@/components/entity-sheets"
+import { Pencil } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -55,26 +35,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 /* -------------------------------------------------------------------------- */
-/* Lookup helpers                                                             */
-/* -------------------------------------------------------------------------- */
-
-function getUserName(userId: string) {
-  return users.find((user) => user.id === userId)?.name ?? userId
-}
-
-function getClientName(clientId: string) {
-  return clients.find((client) => client.id === clientId)?.name ?? clientId
-}
-
-function getMatterName(matterId: string) {
-  return matters.find((matter) => matter.id === matterId)?.title ?? matterId
-}
-
-/* -------------------------------------------------------------------------- */
 /* Formatting                                                                 */
 /* -------------------------------------------------------------------------- */
 
 function formatDate(date: Date | string) {
+  if (!date) return "—"
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
@@ -83,6 +48,7 @@ function formatDate(date: Date | string) {
 }
 
 function formatMoney(value: number, currency = "USD") {
+  if (value === undefined || value === null) return "—"
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -95,6 +61,7 @@ function formatMoney(value: number, currency = "USD") {
 }
 
 function formatLabel(value: string) {
+  if (!value) return "—"
   return value
     .replaceAll("_", " ")
     .toLowerCase()
@@ -120,432 +87,6 @@ function getStatusVariant(
       return "outline"
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Invoice columns                                                            */
-/* -------------------------------------------------------------------------- */
-
-const invoiceColumns: ColumnDef<Invoice>[] = [
-  {
-    accessorKey: "invoiceNumber",
-    header: "Invoice",
-    cell: ({ row }) => (
-      <div>
-        <div className="font-medium">{row.original.invoiceNumber}</div>
-
-        <div className="text-xs text-muted-foreground">
-          {getClientName(row.original.clientId)}
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: "issueDate",
-    header: "Issued",
-    cell: ({ row }) => formatDate(row.original.issueDate),
-  },
-  {
-    accessorKey: "dueDate",
-    header: "Due",
-    cell: ({ row }) => formatDate(row.original.dueDate),
-  },
-  {
-    accessorKey: "total",
-    header: "Total",
-    cell: ({ row }) => (
-      <span className="font-medium">{row.original.total.toLocaleString()}</span>
-    ),
-  },
-  {
-    accessorKey: "amountPaid",
-    header: "Paid",
-    cell: ({ row }) => row.original.amountPaid.toLocaleString(),
-  },
-  {
-    accessorKey: "balanceDue",
-    header: "Balance",
-    cell: ({ row }) => (
-      <span
-        className={
-          row.original.balanceDue > 0 ? "font-medium" : "text-muted-foreground"
-        }
-      >
-        {row.original.balanceDue.toLocaleString()}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "status",
-    header: "Status",
-    cell: ({ row }) => (
-      <Badge variant={getStatusVariant(row.original.status)}>
-        {formatLabel(row.original.status)}
-      </Badge>
-    ),
-  },
-  {
-    id: "actions",
-    cell: () => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem>View invoice</DropdownMenuItem>
-
-          <DropdownMenuItem>Edit invoice</DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem>Record payment</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
-  },
-]
-
-/* -------------------------------------------------------------------------- */
-/* Time entry columns                                                         */
-/* -------------------------------------------------------------------------- */
-
-const timeColumns: ColumnDef<TimeEntry>[] = [
-  {
-    accessorKey: "date",
-    header: "Date",
-    cell: ({ row }) => formatDate(row.original.date),
-  },
-  {
-    accessorKey: "userId",
-    header: "User",
-    cell: ({ row }) => getUserName(row.original.userId),
-  },
-  {
-    accessorKey: "matterId",
-    header: "Matter",
-    cell: ({ row }) => (
-      <div className="max-w-[240px]">
-        <div className="truncate font-medium">
-          {getMatterName(row.original.matterId)}
-        </div>
-
-        <div className="text-xs text-muted-foreground">
-          {row.original.matterId}
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: "description",
-    header: "Description",
-    cell: ({ row }) => (
-      <div className="max-w-[320px] truncate">{row.original.description}</div>
-    ),
-  },
-  {
-    accessorKey: "hours",
-    header: "Hours",
-    cell: ({ row }) => `${row.original.hours.toFixed(2)}h`,
-  },
-  {
-    accessorKey: "rate",
-    header: "Rate",
-    cell: ({ row }) => formatMoney(row.original.rate),
-  },
-  {
-    accessorKey: "amount",
-    header: "Amount",
-    cell: ({ row }) => (
-      <span className="font-medium">{formatMoney(row.original.amount)}</span>
-    ),
-  },
-  {
-    accessorKey: "status",
-    header: "Status",
-    cell: ({ row }) => (
-      <Badge variant={getStatusVariant(row.original.status)}>
-        {formatLabel(row.original.status)}
-      </Badge>
-    ),
-  },
-]
-
-/* -------------------------------------------------------------------------- */
-/* Expense columns                                                            */
-/* -------------------------------------------------------------------------- */
-
-const expenseColumns: ColumnDef<Expense>[] = [
-  {
-    accessorKey: "date",
-    header: "Date",
-    cell: ({ row }) => formatDate(row.original.date),
-  },
-  {
-    accessorKey: "description",
-    header: "Expense",
-    cell: ({ row }) => (
-      <div>
-        <div className="font-medium">{row.original.description}</div>
-
-        <div className="text-xs text-muted-foreground">
-          {row.original.category}
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: "matterId",
-    header: "Matter",
-    cell: ({ row }) => getMatterName(row.original.matterId),
-  },
-  {
-    accessorKey: "userId",
-    header: "Added by",
-    cell: ({ row }) =>
-      row.original.userId ? getUserName(row.original.userId) : "—",
-  },
-  {
-    accessorKey: "amount",
-    header: "Amount",
-    cell: ({ row }) => (
-      <span className="font-medium">
-        {formatMoney(row.original.amount, row.original.currency)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "isBillable",
-    header: "Billable",
-    cell: ({ row }) => (
-      <Badge variant={row.original.isBillable ? "secondary" : "outline"}>
-        {row.original.isBillable ? "Billable" : "Non-billable"}
-      </Badge>
-    ),
-  },
-  {
-    accessorKey: "invoiceId",
-    header: "Invoice",
-    cell: ({ row }) =>
-      row.original.invoiceId ? row.original.invoiceId : "Unbilled",
-  },
-]
-
-/* -------------------------------------------------------------------------- */
-/* Payment columns                                                            */
-/* -------------------------------------------------------------------------- */
-
-const paymentColumns: ColumnDef<Payment>[] = [
-  {
-    accessorKey: "paymentDate",
-    header: "Date",
-    cell: ({ row }) => formatDate(row.original.paymentDate),
-  },
-  {
-    accessorKey: "clientId",
-    header: "Client",
-    cell: ({ row }) => getClientName(row.original.clientId),
-  },
-  {
-    accessorKey: "invoiceId",
-    header: "Invoice",
-    cell: ({ row }) => row.original.invoiceId,
-  },
-  {
-    accessorKey: "amount",
-    header: "Amount",
-    cell: ({ row }) => (
-      <span className="font-medium">
-        {formatMoney(row.original.amount, row.original.currency)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "method",
-    header: "Method",
-    cell: ({ row }) => formatLabel(row.original.method),
-  },
-  {
-    accessorKey: "reference",
-    header: "Reference",
-    cell: ({ row }) => row.original.reference ?? "—",
-  },
-  {
-    accessorKey: "notes",
-    header: "Notes",
-    cell: ({ row }) => (
-      <div className="max-w-[240px] truncate text-muted-foreground">
-        {row.original.notes ?? "—"}
-      </div>
-    ),
-  },
-]
-
-/* -------------------------------------------------------------------------- */
-/* Billing rate columns                                                       */
-/* -------------------------------------------------------------------------- */
-
-const rateColumns: ColumnDef<BillingRate>[] = [
-  {
-    accessorKey: "userId",
-    header: "User",
-    cell: ({ row }) =>
-      row.original.userId ? getUserName(row.original.userId) : "All users",
-  },
-  {
-    accessorKey: "clientId",
-    header: "Client",
-    cell: ({ row }) =>
-      row.original.clientId ? getClientName(row.original.clientId) : "Default",
-  },
-  {
-    accessorKey: "matterId",
-    header: "Matter",
-    cell: ({ row }) =>
-      row.original.matterId
-        ? getMatterName(row.original.matterId)
-        : "All matters",
-  },
-  {
-    accessorKey: "hourlyRate",
-    header: "Hourly rate",
-    cell: ({ row }) => (
-      <span className="font-medium">
-        {formatMoney(row.original.hourlyRate, row.original.currency)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "effectiveFrom",
-    header: "Effective from",
-    cell: ({ row }) => formatDate(row.original.effectiveFrom),
-  },
-  {
-    accessorKey: "effectiveTo",
-    header: "Effective to",
-    cell: ({ row }) =>
-      row.original.effectiveTo
-        ? formatDate(row.original.effectiveTo)
-        : "Current",
-  },
-]
-
-/* -------------------------------------------------------------------------- */
-/* Billing arrangement columns                                                */
-/* -------------------------------------------------------------------------- */
-
-const arrangementColumns: ColumnDef<BillingArrangement>[] = [
-  {
-    accessorKey: "matterId",
-    header: "Matter",
-    cell: ({ row }) => (
-      <div className="max-w-[280px]">
-        <div className="truncate font-medium">
-          {getMatterName(row.original.matterId)}
-        </div>
-
-        <div className="text-xs text-muted-foreground">
-          {row.original.matterId}
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: "method",
-    header: "Method",
-    cell: ({ row }) => (
-      <Badge variant="secondary">{formatLabel(row.original.method)}</Badge>
-    ),
-  },
-  {
-    accessorKey: "hourlyRate",
-    header: "Hourly rate",
-    cell: ({ row }) =>
-      row.original.hourlyRate
-        ? formatMoney(row.original.hourlyRate, row.original.currency)
-        : "—",
-  },
-  {
-    accessorKey: "flatFee",
-    header: "Flat fee",
-    cell: ({ row }) =>
-      row.original.flatFee
-        ? formatMoney(row.original.flatFee, row.original.currency)
-        : "—",
-  },
-  {
-    accessorKey: "retainerAmount",
-    header: "Retainer",
-    cell: ({ row }) =>
-      row.original.retainerAmount
-        ? formatMoney(row.original.retainerAmount, row.original.currency)
-        : "—",
-  },
-  {
-    accessorKey: "billingCap",
-    header: "Billing cap",
-    cell: ({ row }) =>
-      row.original.billingCap
-        ? formatMoney(row.original.billingCap, row.original.currency)
-        : "—",
-  },
-  {
-    accessorKey: "billingFrequency",
-    header: "Frequency",
-    cell: ({ row }) => formatLabel(row.original.billingFrequency),
-  },
-]
-
-/* -------------------------------------------------------------------------- */
-/* Invoice line item columns                                                   */
-/* -------------------------------------------------------------------------- */
-
-const lineItemColumns: ColumnDef<InvoiceLineItem>[] = [
-  {
-    accessorKey: "invoiceId",
-    header: "Invoice",
-    cell: ({ row }) => row.original.invoiceId,
-  },
-  {
-    accessorKey: "matterId",
-    header: "Matter",
-    cell: ({ row }) =>
-      row.original.matterId ? getMatterName(row.original.matterId) : "—",
-  },
-  {
-    accessorKey: "type",
-    header: "Type",
-    cell: ({ row }) => (
-      <Badge variant="outline">{formatLabel(row.original.type)}</Badge>
-    ),
-  },
-  {
-    accessorKey: "description",
-    header: "Description",
-    cell: ({ row }) => (
-      <div className="max-w-[320px] truncate">{row.original.description}</div>
-    ),
-  },
-  {
-    accessorKey: "quantity",
-    header: "Qty",
-  },
-  {
-    accessorKey: "unitPrice",
-    header: "Unit price",
-    cell: ({ row }) => row.original.unitPrice.toLocaleString(),
-  },
-  {
-    accessorKey: "amount",
-    header: "Amount",
-    cell: ({ row }) => (
-      <span className="font-medium">
-        {row.original.amount.toLocaleString()}
-      </span>
-    ),
-  },
-]
 
 /* -------------------------------------------------------------------------- */
 /* Stat card                                                                  */
@@ -590,8 +131,440 @@ function StatCard({
 export default function BillingsPage() {
   const [search, setSearch] = React.useState("")
 
+  const [invoiceSheet, setInvoiceSheet] = React.useState(false)
+  const [timeSheet, setTimeSheet] = React.useState(false)
+  const [expenseSheet, setExpenseSheet] = React.useState(false)
+  const [editingInvoice, setEditingInvoice] = React.useState<any>(null)
+  const [editingTime, setEditingTime] = React.useState<any>(null)
+  const [editingExpense, setEditingExpense] = React.useState<any>(null)
+
+  const handleEditInvoice = (inv: any) => { setEditingInvoice(inv); setInvoiceSheet(true); }
+  const handleEditTime = (te: any) => { setEditingTime(te); setTimeSheet(true); }
+  const handleEditExpense = (ex: any) => { setEditingExpense(ex); setExpenseSheet(true); }
+
+  const [loading, setLoading] = React.useState(true)
+
+  const [users, setUsers] = React.useState<any[]>([])
+  const [clients, setClients] = React.useState<any[]>([])
+  const [matters, setMatters] = React.useState<any[]>([])
+  const [billingRates, setBillingRates] = React.useState<any[]>([])
+  const [billingArrangements, setBillingArrangements] = React.useState<any[]>([])
+  const [timeEntries, setTimeEntries] = React.useState<any[]>([])
+  const [expenses, setExpenses] = React.useState<any[]>([])
+  const [invoices, setInvoices] = React.useState<any[]>([])
+  const [payments, setPayments] = React.useState<any[]>([])
+
+  const fetchData = React.useCallback(async () => {
+      try {
+        const [
+          usersRes,
+          clientsRes,
+          mattersRes,
+          ratesRes,
+          arrangementsRes,
+          timeEntriesRes,
+          expensesRes,
+          invoicesRes,
+          paymentsRes,
+        ] = await Promise.all([
+          fetch("http://localhost:8000/api/users"),
+          fetch("http://localhost:8000/api/clients"),
+          fetch("http://localhost:8000/api/matters"),
+          fetch("http://localhost:8000/api/billing/rates"),
+          fetch("http://localhost:8000/api/billing/arrangements"),
+          fetch("http://localhost:8000/api/billing/time-entries"),
+          fetch("http://localhost:8000/api/billing/expenses"),
+          fetch("http://localhost:8000/api/billing/invoices"),
+          fetch("http://localhost:8000/api/billing/payments"),
+        ])
+
+        setUsers(await usersRes.json())
+        setClients(await clientsRes.json())
+        setMatters(await mattersRes.json())
+        setBillingRates(await ratesRes.json())
+        setBillingArrangements(await arrangementsRes.json())
+        setTimeEntries(await timeEntriesRes.json())
+        setExpenses(await expensesRes.json())
+        setInvoices(await invoicesRes.json())
+        setPayments(await paymentsRes.json())
+      } catch (error) {
+        console.error("Failed to fetch billing data", error)
+      } finally {
+        setLoading(false)
+      }
+  }, []);
+
+  React.useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const getUserName = React.useCallback(
+    (userId: string) => users.find((user) => user.id === userId)?.name ?? userId,
+    [users]
+  )
+
+  const getClientName = React.useCallback(
+    (clientId: string) => clients.find((client) => client.id === clientId)?.name ?? clientId,
+    [clients]
+  )
+
+  const getMatterName = React.useCallback(
+    (matterId: string) => matters.find((matter) => matter.id === matterId)?.title ?? matterId,
+    [matters]
+  )
+
+  /* -------------------------------------------------------------------------- */
+  /* Columns                                                                    */
+  /* -------------------------------------------------------------------------- */
+
+  const invoiceColumns = React.useMemo<ColumnDef<any, any>[]>(() => [
+    {
+      accessorKey: "invoice_number",
+      header: "Invoice",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.invoice_number}</div>
+          <div className="text-xs text-muted-foreground">
+            {getClientName(row.original.client_id)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "issue_date",
+      header: "Issued",
+      cell: ({ row }) => formatDate(row.original.issue_date),
+    },
+    {
+      accessorKey: "due_date",
+      header: "Due",
+      cell: ({ row }) => formatDate(row.original.due_date),
+    },
+    {
+      accessorKey: "total_amount",
+      header: "Total",
+      cell: ({ row }) => (
+        <span className="font-medium">{(row.original.total_amount || 0).toLocaleString()}</span>
+      ),
+    },
+    {
+      accessorKey: "paid_amount",
+      header: "Paid",
+      cell: ({ row }) => (row.original.paid_amount || 0).toLocaleString(),
+    },
+    {
+      id: "balanceDue",
+      header: "Balance",
+      cell: ({ row }) => {
+        const balance = (row.original.total_amount || 0) - (row.original.paid_amount || 0)
+        return (
+          <span
+            className={
+              balance > 0 ? "font-medium" : "text-muted-foreground"
+            }
+          >
+            {balance.toLocaleString()}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge variant={getStatusVariant(row.original.status)}>
+          {formatLabel(row.original.status)}
+        </Badge>
+      ),
+    },
+    {
+      id: "actions",
+      cell: () => (
+        <DropdownMenu>
+          <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md p-0 text-sm font-medium hover:bg-accent hover:text-accent-foreground focus-visible:outline-none"><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>View invoice</DropdownMenuItem>
+            <DropdownMenuItem>Edit invoice</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>Record payment</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ], [getClientName])
+
+  const timeColumns = React.useMemo<ColumnDef<any, any>[]>(() => [
+    {
+      accessorKey: "date",
+      header: "Date",
+      cell: ({ row }) => formatDate(row.original.date),
+    },
+    {
+      accessorKey: "user_id",
+      header: "User",
+      cell: ({ row }) => getUserName(row.original.user_id),
+    },
+    {
+      accessorKey: "matter_id",
+      header: "Matter",
+      cell: ({ row }) => (
+        <div className="max-w-[240px]">
+          <div className="truncate font-medium">
+            {getMatterName(row.original.matter_id)}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {row.original.matter_id}
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "description",
+      header: "Description",
+      cell: ({ row }) => (
+        <div className="max-w-[320px] truncate">{row.original.description}</div>
+      ),
+    },
+    {
+      accessorKey: "hours",
+      header: "Hours",
+      cell: ({ row }) => `${Number(row.original.hours || 0).toFixed(2)}h`,
+    },
+    {
+      accessorKey: "rate",
+      header: "Rate",
+      cell: ({ row }) => formatMoney(row.original.rate),
+    },
+    {
+      accessorKey: "amount",
+      header: "Amount",
+      cell: ({ row }) => (
+        <span className="font-medium">{formatMoney(row.original.amount)}</span>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge variant={getStatusVariant(row.original.status)}>
+          {formatLabel(row.original.status)}
+        </Badge>
+      ),
+    },
+  ], [getUserName, getMatterName])
+
+  const expenseColumns = React.useMemo<ColumnDef<any, any>[]>(() => [
+    {
+      accessorKey: "date",
+      header: "Date",
+      cell: ({ row }) => formatDate(row.original.date),
+    },
+    {
+      accessorKey: "description",
+      header: "Expense",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.description}</div>
+          <div className="text-xs text-muted-foreground">
+            {row.original.category}
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "matter_id",
+      header: "Matter",
+      cell: ({ row }) => getMatterName(row.original.matter_id),
+    },
+    {
+      accessorKey: "user_id",
+      header: "Added by",
+      cell: ({ row }) =>
+        row.original.user_id ? getUserName(row.original.user_id) : "—",
+    },
+    {
+      accessorKey: "amount",
+      header: "Amount",
+      cell: ({ row }) => (
+        <span className="font-medium">
+          {formatMoney(row.original.amount, row.original.currency)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "is_billable",
+      header: "Billable",
+      cell: ({ row }) => {
+        const isBillable = row.original.is_billable ?? row.original.isBillable;
+        return (
+          <Badge variant={isBillable ? "secondary" : "outline"}>
+            {isBillable ? "Billable" : "Non-billable"}
+          </Badge>
+        )
+      },
+    },
+    {
+      accessorKey: "invoice_id",
+      header: "Invoice",
+      cell: ({ row }) =>
+        row.original.invoice_id ? row.original.invoice_id : "Unbilled",
+    },
+  ], [getMatterName, getUserName])
+
+  const paymentColumns = React.useMemo<ColumnDef<any, any>[]>(() => [
+    {
+      accessorKey: "payment_date",
+      header: "Date",
+      cell: ({ row }) => formatDate(row.original.payment_date),
+    },
+    {
+      accessorKey: "client_id",
+      header: "Client",
+      cell: ({ row }) => getClientName(row.original.client_id || row.original.clientId),
+    },
+    {
+      accessorKey: "invoice_id",
+      header: "Invoice",
+      cell: ({ row }) => row.original.invoice_id,
+    },
+    {
+      accessorKey: "amount",
+      header: "Amount",
+      cell: ({ row }) => (
+        <span className="font-medium">
+          {formatMoney(row.original.amount, row.original.currency)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "payment_method",
+      header: "Method",
+      cell: ({ row }) => formatLabel(row.original.payment_method || row.original.method),
+    },
+    {
+      accessorKey: "reference",
+      header: "Reference",
+      cell: ({ row }) => row.original.reference ?? "—",
+    },
+    {
+      accessorKey: "notes",
+      header: "Notes",
+      cell: ({ row }) => (
+        <div className="max-w-[240px] truncate text-muted-foreground">
+          {row.original.notes ?? "—"}
+        </div>
+      ),
+    },
+  ], [getClientName])
+
+  const rateColumns = React.useMemo<ColumnDef<any, any>[]>(() => [
+    {
+      accessorKey: "user_id",
+      header: "User",
+      cell: ({ row }) =>
+        row.original.user_id ? getUserName(row.original.user_id) : "All users",
+    },
+    {
+      accessorKey: "client_id",
+      header: "Client",
+      cell: ({ row }) =>
+        row.original.client_id ? getClientName(row.original.client_id) : "Default",
+    },
+    {
+      accessorKey: "matter_id",
+      header: "Matter",
+      cell: ({ row }) =>
+        row.original.matter_id
+          ? getMatterName(row.original.matter_id)
+          : "All matters",
+    },
+    {
+      accessorKey: "hourly_rate",
+      header: "Hourly rate",
+      cell: ({ row }) => (
+        <span className="font-medium">
+          {formatMoney(row.original.hourly_rate, row.original.currency)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "effective_from",
+      header: "Effective from",
+      cell: ({ row }) => formatDate(row.original.effective_from || row.original.effectiveFrom),
+    },
+    {
+      accessorKey: "effective_to",
+      header: "Effective to",
+      cell: ({ row }) =>
+        (row.original.effective_to || row.original.effectiveTo)
+          ? formatDate(row.original.effective_to || row.original.effectiveTo)
+          : "Current",
+    },
+  ], [getUserName, getClientName, getMatterName])
+
+  const arrangementColumns = React.useMemo<ColumnDef<any, any>[]>(() => [
+    {
+      accessorKey: "matter_id",
+      header: "Matter",
+      cell: ({ row }) => (
+        <div className="max-w-[280px]">
+          <div className="truncate font-medium">
+            {getMatterName(row.original.matter_id)}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {row.original.matter_id}
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "arrangement_type",
+      header: "Method",
+      cell: ({ row }) => (
+        <Badge variant="secondary">{formatLabel(row.original.arrangement_type || row.original.method)}</Badge>
+      ),
+    },
+    {
+      accessorKey: "hourly_rate",
+      header: "Hourly rate",
+      cell: ({ row }) =>
+        row.original.hourly_rate
+          ? formatMoney(row.original.hourly_rate, row.original.currency)
+          : "—",
+    },
+    {
+      accessorKey: "flat_fee",
+      header: "Flat fee",
+      cell: ({ row }) =>
+        row.original.flat_fee
+          ? formatMoney(row.original.flat_fee, row.original.currency)
+          : "—",
+    },
+    {
+      accessorKey: "retainer_amount",
+      header: "Retainer",
+      cell: ({ row }) =>
+        row.original.retainer_amount
+          ? formatMoney(row.original.retainer_amount, row.original.currency)
+          : "—",
+    },
+    {
+      accessorKey: "billing_cap",
+      header: "Billing cap",
+      cell: ({ row }) =>
+        row.original.billing_cap || row.original.billingCap
+          ? formatMoney(row.original.billing_cap || row.original.billingCap, row.original.currency)
+          : "—",
+    },
+    {
+      accessorKey: "billing_frequency",
+      header: "Frequency",
+      cell: ({ row }) => formatLabel(row.original.billing_frequency),
+    },
+  ], [getMatterName])
+
   const outstandingAmount = invoices.reduce(
-    (sum, invoice) => sum + invoice.balanceDue,
+    (sum, invoice) => sum + ((invoice.total_amount || 0) - (invoice.paid_amount || 0)),
     0
   )
 
@@ -600,28 +573,23 @@ export default function BillingsPage() {
   )
 
   const unbilledTimeAmount = unbilledTime.reduce(
-    (sum, entry) => sum + entry.amount,
+    (sum, entry) => sum + (entry.amount || 0),
     0
   )
 
   const unbilledExpenses = expenses.filter(
-    (expense) => expense.isBillable && !expense.invoiceId
+    (expense) => (expense.is_billable ?? expense.isBillable) && !expense.invoice_id
   )
 
   const unbilledExpenseAmount = unbilledExpenses.reduce(
-    (sum, expense) => sum + expense.amount,
+    (sum, expense) => sum + (expense.amount || 0),
     0
   )
 
   const paymentsReceived = payments.reduce(
-    (sum, payment) => sum + payment.amount,
+    (sum, payment) => sum + (payment.amount || 0),
     0
   )
-
-  /*
-   * Filter each dataset using its actual related
-   * records from @/lib/data.
-   */
 
   const filteredInvoices = React.useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -630,11 +598,11 @@ export default function BillingsPage() {
 
     return invoices.filter((invoice) => {
       return (
-        invoice.invoiceNumber.toLowerCase().includes(query) ||
-        getClientName(invoice.clientId).toLowerCase().includes(query)
+        (invoice.invoice_number || "").toLowerCase().includes(query) ||
+        getClientName(invoice.client_id).toLowerCase().includes(query)
       )
     })
-  }, [search])
+  }, [search, invoices, getClientName])
 
   const filteredTimeEntries = React.useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -643,12 +611,12 @@ export default function BillingsPage() {
 
     return timeEntries.filter((entry) => {
       return (
-        entry.description.toLowerCase().includes(query) ||
-        getUserName(entry.userId).toLowerCase().includes(query) ||
-        getMatterName(entry.matterId).toLowerCase().includes(query)
+        (entry.description || "").toLowerCase().includes(query) ||
+        getUserName(entry.user_id).toLowerCase().includes(query) ||
+        getMatterName(entry.matter_id).toLowerCase().includes(query)
       )
     })
-  }, [search])
+  }, [search, timeEntries, getUserName, getMatterName])
 
   const filteredExpenses = React.useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -657,12 +625,12 @@ export default function BillingsPage() {
 
     return expenses.filter((expense) => {
       return (
-        expense.description.toLowerCase().includes(query) ||
-        expense.category.toLowerCase().includes(query) ||
-        getMatterName(expense.matterId).toLowerCase().includes(query)
+        (expense.description || "").toLowerCase().includes(query) ||
+        (expense.category || "").toLowerCase().includes(query) ||
+        getMatterName(expense.matter_id).toLowerCase().includes(query)
       )
     })
-  }, [search])
+  }, [search, expenses, getMatterName])
 
   const filteredPayments = React.useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -671,12 +639,20 @@ export default function BillingsPage() {
 
     return payments.filter((payment) => {
       return (
-        getClientName(payment.clientId).toLowerCase().includes(query) ||
-        payment.invoiceId.toLowerCase().includes(query) ||
+        getClientName(payment.client_id || payment.clientId).toLowerCase().includes(query) ||
+        (payment.invoice_id || "").toLowerCase().includes(query) ||
         (payment.reference ?? "").toLowerCase().includes(query)
       )
     })
-  }, [search])
+  }, [search, payments, getClientName])
+
+  if (loading) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">
@@ -712,8 +688,7 @@ export default function BillingsPage() {
         <StatCard
           title="Outstanding"
           value={outstandingAmount.toLocaleString()}
-          description={`${invoices.filter((invoice) => invoice.status === "OVERDUE").length
-            } overdue invoices`}
+          description={`${invoices.filter((invoice) => invoice.status === "OVERDUE").length} overdue invoices`}
           icon={DollarSign}
         />
 
@@ -734,8 +709,7 @@ export default function BillingsPage() {
         <StatCard
           title="Payments received"
           value={paymentsReceived.toLocaleString()}
-          description={`${invoices.filter((invoice) => invoice.status === "PAID").length
-            } invoices fully paid`}
+          description={`${invoices.filter((invoice) => invoice.status === "PAID").length} invoices fully paid`}
           icon={CreditCard}
         />
       </div>
@@ -848,17 +822,17 @@ export default function BillingsPage() {
           </CardHeader>
 
           <CardContent className="grid grid-cols-2 gap-2">
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => { setEditingTime(null); setTimeSheet(true) }}>
               <Timer className="mr-2 h-4 w-4" />
               Add time
             </Button>
 
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => { setEditingExpense(null); setExpenseSheet(true) }}>
               <Receipt className="mr-2 h-4 w-4" />
               Add expense
             </Button>
 
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => { setEditingInvoice(null); setInvoiceSheet(true) }}>
               <FileText className="mr-2 h-4 w-4" />
               New invoice
             </Button>
@@ -900,18 +874,11 @@ export default function BillingsPage() {
           <Tabs defaultValue="invoices" className="w-full">
             <TabsList className="mb-6 h-auto w-full justify-start overflow-x-auto">
               <TabsTrigger value="invoices">Invoices</TabsTrigger>
-
               <TabsTrigger value="time">Time</TabsTrigger>
-
               <TabsTrigger value="expenses">Expenses</TabsTrigger>
-
               <TabsTrigger value="payments">Payments</TabsTrigger>
-
               <TabsTrigger value="rates">Rates</TabsTrigger>
-
               <TabsTrigger value="arrangements">Arrangements</TabsTrigger>
-
-              <TabsTrigger value="line-items">Line items</TabsTrigger>
             </TabsList>
 
             <TabsContent value="invoices" className="mt-0">
@@ -940,10 +907,6 @@ export default function BillingsPage() {
                 data={billingArrangements}
               />
             </TabsContent>
-
-            <TabsContent value="line-items" className="mt-0">
-              <DataTable columns={lineItemColumns} data={invoiceLineItems} />
-            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
@@ -966,6 +929,10 @@ export default function BillingsPage() {
           <ArrowUpRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
+    
+      <InvoiceSheet open={invoiceSheet} onClose={() => setInvoiceSheet(false)} initial={editingInvoice} matters={matters} clients={clients} onSaved={(i) => { setInvoiceSheet(false); fetchData(); }} />
+      <TimeEntrySheet open={timeSheet} onClose={() => setTimeSheet(false)} initial={editingTime} matters={matters} users={users} onSaved={(i) => { setTimeSheet(false); fetchData(); }} />
+      <ExpenseSheet open={expenseSheet} onClose={() => setExpenseSheet(false)} initial={editingExpense} matters={matters} onSaved={(i) => { setExpenseSheet(false); fetchData(); }} />
     </div>
   )
 }

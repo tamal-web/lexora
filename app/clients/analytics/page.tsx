@@ -1,6 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { ClientSheet } from "@/components/entity-sheets"
+import { Pencil } from "lucide-react"
+
+import { useMemo, useState, useEffect } from "react"
 import {
   AlertCircle,
   ArrowDownRight,
@@ -17,25 +20,8 @@ import {
   Receipt,
   Search,
   Users,
+  Loader2,
 } from "lucide-react"
-
-import {
-  firm,
-  users,
-  clients,
-  matters,
-  matterAssignments,
-  deadlines,
-  billingRates,
-  billingArrangements,
-  timeEntries,
-  expenses,
-  invoices,
-  invoiceLineItems,
-  payments,
-  documents,
-  documentVersions,
-} from "@/lib/data"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -133,29 +119,115 @@ const deadlineStatusClasses: Record<string, string> = {
 
 export default function ClientsAnalyticsPage() {
   const [search, setSearch] = useState("")
+
+  const [clientSheet, setClientSheet] = useState(false)
+  const [editingClient, setEditingClient] = useState<any>(null)
+
+  const handleEditClient = (c: any) => {
+    setEditingClient(c)
+    setClientSheet(true)
+  }
+
   const [matterFilter, setMatterFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
 
-  const now = new Date("2026-08-27")
+  const [loading, setLoading] = useState(true)
+  const [clients, setClients] = useState<any[]>([])
+  const [matters, setMatters] = useState<any[]>([])
+  const [deadlines, setDeadlines] = useState<any[]>([])
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [payments, setPayments] = useState<any[]>([])
+  const [timeEntries, setTimeEntries] = useState<any[]>([])
+  const [expenses, setExpenses] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
+  const [documents, setDocuments] = useState<any[]>([])
+  const [matterAssignments, setMatterAssignments] = useState<any[]>([])
+  const [firm, setFirm] = useState<any>({ name: "Firm" })
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [
+          clientsRes,
+          mattersRes,
+          deadlinesRes,
+          invoicesRes,
+          paymentsRes,
+          timeEntriesRes,
+          expensesRes,
+          usersRes,
+          documentsRes,
+          matterAssignmentsRes,
+          firmRes,
+        ] = await Promise.all([
+          fetch("http://localhost:8000/api/clients"),
+          fetch("http://localhost:8000/api/matters"),
+          fetch("http://localhost:8000/api/deadlines"),
+          fetch("http://localhost:8000/api/billing/invoices"),
+          fetch("http://localhost:8000/api/billing/payments"),
+          fetch("http://localhost:8000/api/billing/time-entries"),
+          fetch("http://localhost:8000/api/billing/expenses"),
+          fetch("http://localhost:8000/api/users"),
+          fetch("http://localhost:8000/api/documents").catch(() => null),
+          fetch("http://localhost:8000/api/matter-assignments").catch(
+            () => null
+          ),
+          fetch("http://localhost:8000/api/firm").catch(() => null),
+        ])
+
+        setClients(clientsRes.ok ? await clientsRes.json() : [])
+        setMatters(mattersRes.ok ? await mattersRes.json() : [])
+        setDeadlines(deadlinesRes.ok ? await deadlinesRes.json() : [])
+        setInvoices(invoicesRes.ok ? await invoicesRes.json() : [])
+        setPayments(paymentsRes.ok ? await paymentsRes.json() : [])
+        setTimeEntries(timeEntriesRes.ok ? await timeEntriesRes.json() : [])
+        setExpenses(expensesRes.ok ? await expensesRes.json() : [])
+        setUsers(usersRes.ok ? await usersRes.json() : [])
+        setDocuments(documentsRes?.ok ? await documentsRes.json() : [])
+        setMatterAssignments(
+          matterAssignmentsRes?.ok ? await matterAssignmentsRes.json() : []
+        )
+        setFirm(firmRes?.ok ? await firmRes.json() : { name: "Firm" })
+      } catch (error) {
+        console.error("Error fetching analytics data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  const now = new Date()
 
   const analytics = useMemo(() => {
     const getClientMatters = (clientId: string) =>
       matters.filter((matter) => matter.client_id === clientId)
 
     const getClientInvoices = (clientId: string) =>
-      invoices.filter((invoice) => invoice.clientId === clientId)
+      invoices.filter((invoice) => invoice.client_id === clientId)
 
     const getClientPayments = (clientId: string) =>
-      payments.filter((payment) => payment.clientId === clientId)
+      payments.filter((payment) => {
+        if (payment.client_id === clientId) return true
+        const invoice = invoices.find(
+          (inv) => inv.id === (payment.invoice_id || payment.invoiceId)
+        )
+        return invoice?.client_id === clientId
+      })
 
     const getClientTime = (clientId: string) => {
       const ids = getClientMatters(clientId).map((matter) => matter.id)
-      return timeEntries.filter((entry) => ids.includes(entry.matterId))
+      return timeEntries.filter((entry) =>
+        ids.includes(entry.matter_id || entry.matterId)
+      )
     }
 
     const getClientExpenses = (clientId: string) => {
       const ids = getClientMatters(clientId).map((matter) => matter.id)
-      return expenses.filter((expense) => ids.includes(expense.matterId))
+      return expenses.filter((expense) =>
+        ids.includes(expense.matter_id || expense.matterId)
+      )
     }
 
     const getClientDeadlines = (clientId: string) => {
@@ -164,7 +236,9 @@ export default function ClientsAnalyticsPage() {
     }
 
     const getClientDocuments = (clientId: string) =>
-      documents.filter((document) => document.clientId === clientId)
+      documents.filter(
+        (document) => (document.client_id || document.clientId) === clientId
+      )
 
     const clientRows = clients.map((client) => {
       const clientMatters = getClientMatters(client.id)
@@ -176,24 +250,40 @@ export default function ClientsAnalyticsPage() {
       const clientDocuments = getClientDocuments(client.id)
 
       const invoicedUsd = clientInvoices.reduce(
-        (sum, invoice) => sum + invoice.total * FX_TO_USD["USD"],
+        (sum, invoice) =>
+          sum + (invoice.total_amount || invoice.total || 0) * FX_TO_USD["USD"],
         0
       )
 
       const paidUsd = clientInvoices.reduce((sum, invoice) => {
         const invoiceCurrency =
-          payments.find((payment) => payment.invoiceId === invoice.id)
-            ?.currency ?? "USD"
+          payments.find(
+            (payment) =>
+              (payment.invoice_id || payment.invoiceId) === invoice.id
+          )?.currency ??
+          invoice.currency ??
+          "USD"
 
-        return sum + invoice.amountPaid * (FX_TO_USD[invoiceCurrency] ?? 1)
+        return (
+          sum +
+          (invoice.paid_amount || invoice.amountPaid || 0) *
+          (FX_TO_USD[invoiceCurrency] ?? 1)
+        )
       }, 0)
 
       const outstandingUsd = clientInvoices.reduce((sum, invoice) => {
         const paymentCurrency =
-          payments.find((payment) => payment.invoiceId === invoice.id)
-            ?.currency ?? "USD"
+          payments.find(
+            (payment) =>
+              (payment.invoice_id || payment.invoiceId) === invoice.id
+          )?.currency ??
+          invoice.currency ??
+          "USD"
 
-        return sum + invoice.balanceDue * (FX_TO_USD[paymentCurrency] ?? 1)
+        const balanceDue =
+          (invoice.total_amount || invoice.total || 0) -
+          (invoice.paid_amount || invoice.amountPaid || 0)
+        return sum + balanceDue * (FX_TO_USD[paymentCurrency] ?? 1)
       }, 0)
 
       const billedHours = clientTime
@@ -203,7 +293,7 @@ export default function ClientsAnalyticsPage() {
       const totalHours = clientTime.reduce((sum, entry) => sum + entry.hours, 0)
 
       const billableExpensesUsd = clientExpenses
-        .filter((expense) => expense.isBillable)
+        .filter((expense) => expense.is_billable ?? expense.isBillable)
         .reduce(
           (sum, expense) =>
             sum + expense.amount * (FX_TO_USD[expense.currency] ?? 1),
@@ -222,12 +312,22 @@ export default function ClientsAnalyticsPage() {
         ["OPEN", "PENDING", "ON_HOLD"].includes(matter.status)
       )
 
-      const leadAttorney =
-        matterAssignments.find(
-          (assignment) =>
-            clientMatters.some((matter) => matter.id === assignment.matterId) &&
-            assignment.role === "RESPONSIBLE_ATTORNEY"
-        )?.userName ?? "Unassigned"
+      const leadAttorneyAssignment = matterAssignments.find(
+        (assignment) =>
+          clientMatters.some(
+            (matter) =>
+              matter.id === (assignment.matter_id || assignment.matterId)
+          ) && assignment.role === "RESPONSIBLE_ATTORNEY"
+      )
+
+      let leadAttorney =
+        leadAttorneyAssignment?.userName ||
+        leadAttorneyAssignment?.user_name ||
+        "Unassigned"
+      if (leadAttorneyAssignment?.user_id) {
+        const user = users.find((u) => u.id === leadAttorneyAssignment.user_id)
+        if (user) leadAttorney = user.name
+      }
 
       let health: "Healthy" | "At Risk" | "Critical" = "Healthy"
 
@@ -279,7 +379,7 @@ export default function ClientsAnalyticsPage() {
       .reduce((sum, entry) => sum + entry.hours, 0)
 
     const totalBillableExpensesUsd = expenses
-      .filter((expense) => expense.isBillable)
+      .filter((expense) => expense.is_billable ?? expense.isBillable)
       .reduce(
         (sum, expense) =>
           sum + expense.amount * (FX_TO_USD[expense.currency] ?? 1),
@@ -308,7 +408,7 @@ export default function ClientsAnalyticsPage() {
     )
 
     const totalDocumentStorage = documents.reduce(
-      (sum, document) => sum + document.fileSize,
+      (sum, document) => sum + (document.file_size || document.fileSize || 0),
       0
     )
 
@@ -327,12 +427,25 @@ export default function ClientsAnalyticsPage() {
       matterValueUsd,
       totalDocumentStorage,
     }
-  }, [])
+  }, [
+    clients,
+    matters,
+    deadlines,
+    invoices,
+    payments,
+    timeEntries,
+    expenses,
+    users,
+    documents,
+    matterAssignments,
+  ])
 
   const filteredClients = analytics.clientRows.filter((row) => {
+    const primaryContact =
+      row.client.primary_contact_name || row.client.primaryContactName || ""
     const matchesSearch =
       row.client.name.toLowerCase().includes(search.toLowerCase()) ||
-      row.client.primaryContactName.toLowerCase().includes(search.toLowerCase())
+      primaryContact.toLowerCase().includes(search.toLowerCase())
 
     const matchesMatter =
       matterFilter === "all" ||
@@ -347,17 +460,26 @@ export default function ClientsAnalyticsPage() {
     .sort((a, b) => b.invoicedUsd - a.invoicedUsd)
     .slice(0, 6)
 
-  const maxRevenue = Math.max(...revenueByClient.map((row) => row.invoicedUsd))
+  const maxRevenue = Math.max(
+    ...revenueByClient.map((row) => row.invoicedUsd),
+    1
+  )
 
   const upcomingDeadlines = [...deadlines]
     .filter((deadline) =>
       ["OVERDUE", "DUE_SOON", "UPCOMING"].includes(deadline.status)
     )
-    .sort((a, b) => a.due_date.getTime() - b.due_date.getTime())
+    .sort(
+      (a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+    )
     .slice(0, 6)
 
   const recentInvoices = [...invoices]
-    .sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.issue_date || b.issueDate).getTime() -
+        new Date(a.issue_date || a.issueDate).getTime()
+    )
     .slice(0, 6)
 
   const monthlyRevenue = [
@@ -370,8 +492,17 @@ export default function ClientsAnalyticsPage() {
   ]
 
   const maxMonthlyRevenue = Math.max(
-    ...monthlyRevenue.map((item) => item.value)
+    ...monthlyRevenue.map((item) => item.value),
+    1
   )
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -380,7 +511,7 @@ export default function ClientsAnalyticsPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>{firm.name}</span>
+                <span>{firm?.name}</span>
                 <ChevronRight className="h-4 w-4" />
                 <span>Clients</span>
                 <ChevronRight className="h-4 w-4" />
@@ -474,7 +605,14 @@ export default function ClientsAnalyticsPage() {
               <div className="mt-2 flex items-center gap-1 text-xs text-red-600">
                 <ArrowDownRight className="h-3.5 w-3.5" />
                 <span>
-                  {invoices.filter((invoice) => invoice.balanceDue > 0).length}{" "}
+                  {
+                    invoices.filter(
+                      (invoice) =>
+                        (invoice.total_amount || invoice.total || 0) -
+                        (invoice.paid_amount || invoice.amountPaid || 0) >
+                        0
+                    ).length
+                  }{" "}
                   open invoices
                 </span>
               </div>
@@ -577,10 +715,13 @@ export default function ClientsAnalyticsPage() {
                     Collection rate
                   </p>
                   <p className="mt-1 font-semibold">
-                    {Math.round(
-                      (analytics.totalPaidUsd / analytics.totalInvoicedUsd) *
-                      100
-                    )}
+                    {analytics.totalInvoicedUsd > 0
+                      ? Math.round(
+                        (analytics.totalPaidUsd /
+                          analytics.totalInvoicedUsd) *
+                        100
+                      )
+                      : 0}
                     %
                   </p>
                 </div>
@@ -702,7 +843,11 @@ export default function ClientsAnalyticsPage() {
                       <span className="text-muted-foreground">{label}</span>
                       <span className="font-medium">{count}</span>
                     </div>
-                    <Progress value={(count / matters.length) * 100} />
+                    <Progress
+                      value={
+                        matters.length > 0 ? (count / matters.length) * 100 : 0
+                      }
+                    />
                   </div>
                 )
               })}
@@ -795,7 +940,8 @@ export default function ClientsAnalyticsPage() {
                   )
 
                   const assignedUser = users.find(
-                    (user) => user.id === deadline.assigned_to
+                    (user) =>
+                      user.id === (deadline.assigned_to || deadline.assignedTo)
                   )
 
                   return (
@@ -826,11 +972,14 @@ export default function ClientsAnalyticsPage() {
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                           <span>
                             Due{" "}
-                            {deadline.due_date.toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
+                            {new Date(deadline.due_date).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )}
                           </span>
 
                           <span>{assignedUser?.name ?? "Unassigned"}</span>
@@ -864,12 +1013,16 @@ export default function ClientsAnalyticsPage() {
               <div className="space-y-3">
                 {recentInvoices.map((invoice) => {
                   const client = clients.find(
-                    (item) => item.id === invoice.clientId
+                    (item) => item.id === invoice.client_id
                   )
 
                   const currency =
-                    payments.find((payment) => payment.invoiceId === invoice.id)
-                      ?.currency ?? "USD"
+                    payments.find(
+                      (payment) =>
+                        (payment.invoice_id || payment.invoiceId) === invoice.id
+                    )?.currency ??
+                    invoice.currency ??
+                    "USD"
 
                   return (
                     <div
@@ -889,8 +1042,10 @@ export default function ClientsAnalyticsPage() {
                           </p>
 
                           <p className="text-xs text-muted-foreground">
-                            {invoice.invoiceNumber} ·{" "}
-                            {invoice.dueDate.toLocaleDateString("en-US", {
+                            {invoice.invoice_number || invoice.invoiceNumber} ·{" "}
+                            {new Date(
+                              invoice.issue_date || invoice.issueDate
+                            ).toLocaleDateString("en-US", {
                               month: "short",
                               day: "numeric",
                             })}
@@ -900,7 +1055,11 @@ export default function ClientsAnalyticsPage() {
 
                       <div className="text-right">
                         <p className="text-sm font-semibold">
-                          {formatCurrency(invoice.total, currency, 0)}
+                          {formatCurrency(
+                            invoice.total_amount || invoice.total || 0,
+                            currency,
+                            0
+                          )}
                         </p>
 
                         <Badge
@@ -941,7 +1100,7 @@ export default function ClientsAnalyticsPage() {
                   />
                 </div>
 
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <Select value={statusFilter} onValueChange={(val) => val && setStatusFilter(val)}>
                   <SelectTrigger className="w-full sm:w-[140px]">
                     <SelectValue placeholder="Health" />
                   </SelectTrigger>
@@ -953,7 +1112,7 @@ export default function ClientsAnalyticsPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={matterFilter} onValueChange={setMatterFilter}>
+                <Select value={matterFilter} onValueChange={(val) => val && setMatterFilter(val)}>
                   <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Matter type" />
                   </SelectTrigger>
@@ -964,8 +1123,8 @@ export default function ClientsAnalyticsPage() {
                     {Array.from(
                       new Set(matters.map((matter) => matter.type))
                     ).map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {matterTypeLabel(type)}
+                      <SelectItem key={type as string} value={type as string}>
+                        {matterTypeLabel(type as string)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1017,7 +1176,9 @@ export default function ClientsAnalyticsPage() {
                                 <p className="font-medium">{row.client.name}</p>
 
                                 <p className="truncate text-xs text-muted-foreground">
-                                  {row.client.primaryContactName}
+                                  {row.client.primary_contact_name ||
+                                    row.client.primaryContactName ||
+                                    ""}
                                 </p>
                               </div>
                             </div>
@@ -1265,8 +1426,16 @@ export default function ClientsAnalyticsPage() {
                     <TableBody>
                       {filteredClients.map((row) => (
                         <TableRow key={row.client.id}>
-                          <TableCell className="pl-6 font-medium">
+                          <TableCell className="flex items-center gap-2 pl-6 font-medium">
                             {row.client.name}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleEditClient(row.client)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
                           </TableCell>
 
                           <TableCell>{row.activeMatters.length}</TableCell>
@@ -1343,8 +1512,16 @@ export default function ClientsAnalyticsPage() {
 
                         return (
                           <TableRow key={row.client.id}>
-                            <TableCell className="pl-6 font-medium">
+                            <TableCell className="flex items-center gap-2 pl-6 font-medium">
                               {row.client.name}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => handleEditClient(row.client)}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
                             </TableCell>
 
                             <TableCell>{row.deadlines.length}</TableCell>
@@ -1399,9 +1576,11 @@ export default function ClientsAnalyticsPage() {
             <CardContent>
               <div className="flex items-end justify-between">
                 <p className="text-2xl font-semibold">
-                  {Math.round(
-                    (analytics.billableHours / analytics.totalHours) * 100
-                  )}
+                  {analytics.totalHours > 0
+                    ? Math.round(
+                      (analytics.billableHours / analytics.totalHours) * 100
+                    )
+                    : 0}
                   %
                 </p>
                 <Clock3 className="h-4 w-4 text-muted-foreground" />
@@ -1409,7 +1588,11 @@ export default function ClientsAnalyticsPage() {
 
               <Progress
                 className="mt-3"
-                value={(analytics.billableHours / analytics.totalHours) * 100}
+                value={
+                  analytics.totalHours > 0
+                    ? (analytics.billableHours / analytics.totalHours) * 100
+                    : 0
+                }
               />
             </CardContent>
           </Card>
@@ -1422,10 +1605,13 @@ export default function ClientsAnalyticsPage() {
             <CardContent>
               <div className="flex items-end justify-between">
                 <p className="text-2xl font-semibold">
-                  {Math.round(
-                    (analytics.completedDeadlines.length / deadlines.length) *
-                    100
-                  )}
+                  {deadlines.length > 0
+                    ? Math.round(
+                      (analytics.completedDeadlines.length /
+                        deadlines.length) *
+                      100
+                    )
+                    : 0}
                   %
                 </p>
                 <CalendarClock className="h-4 w-4 text-muted-foreground" />
@@ -1434,7 +1620,10 @@ export default function ClientsAnalyticsPage() {
               <Progress
                 className="mt-3"
                 value={
-                  (analytics.completedDeadlines.length / deadlines.length) * 100
+                  deadlines.length > 0
+                    ? (analytics.completedDeadlines.length / deadlines.length) *
+                    100
+                    : 0
                 }
               />
             </CardContent>
@@ -1468,19 +1657,26 @@ export default function ClientsAnalyticsPage() {
               </p>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                Across {users.filter((user) => user.isActive).length} active
-                users
+                Across{" "}
+                {users.filter((user) => user.is_active ?? user.isActive).length}{" "}
+                active users
               </p>
             </CardContent>
           </Card>
         </div>
 
         <div className="mt-6 pb-8 text-xs text-muted-foreground">
-          Analytics are derived from the current docketing seed data.
-          Cross-currency financial figures are normalized to USD using
-          illustrative FX rates for dashboard presentation.
+          Analytics are derived from the live API data. Cross-currency financial
+          figures are normalized to USD using illustrative FX rates for
+          dashboard presentation.
         </div>
       </main>
+      <ClientSheet
+        open={clientSheet}
+        onClose={() => setClientSheet(false)}
+        initial={editingClient}
+        onSaved={() => window.location.reload()}
+      />
     </div>
   )
 }

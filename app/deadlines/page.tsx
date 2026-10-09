@@ -1,5 +1,5 @@
 "use client"
-import { BriefcaseBusiness, Target, X } from "lucide-react"
+import { BriefcaseBusiness, Target, X, Loader2, Plus } from "lucide-react"
 import {
   Select,
   SelectTrigger,
@@ -8,12 +8,15 @@ import {
   SelectItem,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
 import { TopNavBar } from "@/components/TopNavBarComp"
 import { Deadline } from "@/lib/models"
 import { Table, type Column, fromIdTitleList } from "@/components/table"
-import { deadlines, matters } from "@/lib/data"
 import { useClient } from "../client-context"
+import { useApi } from "@/lib/use-api"
+import { api, ApiDeadline } from "@/lib/api"
+import { DeadlineSheet } from "@/components/entity-sheets"
 
 const typesList = [
   { id: "PATENT_UTILITY", title: "Utility Patent" },
@@ -43,20 +46,12 @@ const statusList = [
   { id: "ARCHIVED", title: "Archived" },
 ] as const
 
-// New: title list for the Deadline "priorty" column
 const priorityList = [
   { id: "CRITICAL", title: "Critical" },
   { id: "STANDARD", title: "Standard" },
   { id: "SOFT", title: "Soft" },
 ] as const
 
-// typesList / statusList above use a different id set than DeadlineType /
-// DeadlineStatus (they look like matter type/status, not deadline type/status),
-// so they can't be reused for the action_type / status columns. Until real
-// display titles for DeadlineType/DeadlineStatus are available, humanize()
-// auto-generates a readable label from the raw enum value as a placeholder —
-// swap this out for a real { id, title } list + fromIdTitleList the same way
-// priorityList is used below, once you have one.
 function humanize(value: string): string {
   return value
     .toLowerCase()
@@ -117,7 +112,7 @@ const deadlineColumns: Column<Deadline>[] = [
     filterable: true,
   },
   {
-    key: "priorty", // matches the typo in the interface — see note below
+    key: "priorty",
     header: "Priority",
     type: "union",
     ...fromIdTitleList(priorityList),
@@ -164,7 +159,7 @@ const deadlineColumns: Column<Deadline>[] = [
     sortable: true,
     filterable: true,
     render: (value) =>
-      value !== undefined ? `$${value.toLocaleString()}` : "—",
+      value !== undefined && value !== null ? `$${value.toLocaleString()}` : "—",
   },
   {
     key: "fee_status",
@@ -178,28 +173,66 @@ const deadlineColumns: Column<Deadline>[] = [
 
 export default function DeadlinesPage() {
   const [mi, setMi] = useState<{ title: string; id: string } | null>(null)
-  const [status, setStatus] = useState<{ title: string; id: string } | null>(
-    null
-  )
   const { client } = useClient()
+
+  // Sheet state
+  const [deadlineSheet, setDeadlineSheet] = useState(false)
+  const [editingDeadline, setEditingDeadline] = useState<ApiDeadline | null>(null)
+
+  const { data: rawMatters, loading: loadingMatters, error: errorMatters } = useApi(api.matters)
+  const { data: rawDeadlines, loading: loadingDeadlines, error: errorDeadlines, refetch: refetchDeadlines } = useApi(api.deadlines)
+
+  if (loadingMatters || loadingDeadlines) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="size-8 animate-spin" />
+      </div>
+    )
+  }
+
+  if (errorMatters || errorDeadlines) {
+    return <div className="p-8 text-red-500">Failed to load data</div>
+  }
+
+  const matters = rawMatters || []
+  const rawApiDeadlines = rawDeadlines || []
+  const mappedDeadlines: Deadline[] = rawApiDeadlines.map((d: any) => ({
+    ...d,
+    due_date: new Date(d.due_date),
+    priorty: d.priority,
+    fee_ammount: d.fee_amount,
+    fee_curency: d.fee_currency,
+  }))
+
+  const handleEditDeadline = (d: Deadline) => {
+    const raw = rawApiDeadlines.find((r: ApiDeadline) => r.id === d.id) ?? null
+    setEditingDeadline(raw)
+    setDeadlineSheet(true)
+  }
+
   return (
     <div className="px-8">
       <TopNavBar className="sticky top-0">
-        <div className="flex flex-col items-start justify-start gap-3">
-          <div className="flex flex-row items-center justify-start gap-2">
-            <Target />
-            <h1 className="font-medium">Deadlines</h1>
+        <div className="flex flex-col items-start justify-start gap-3 w-full">
+          <div className="flex flex-row items-center justify-between w-full gap-2">
+            <div className="flex flex-row items-center gap-2">
+              <Target />
+              <h1 className="font-medium">Deadlines</h1>
+            </div>
+            <Button size="sm" onClick={() => { setEditingDeadline(null); setDeadlineSheet(true) }}>
+              <Plus className="mr-1.5 size-3.5" /> New Deadline
+            </Button>
           </div>
           <div className="flex flex-row items-center justify-start gap-2">
             <div className="flex flex-row items-center justify-start gap-1">
-              <Select value={mi} onValueChange={(x) => setMi(x)}>
+              <Select value={mi as any} onValueChange={(x) => setMi(x as any)}>
                 <SelectTrigger className={"min-w-[17rem]"}>
                   <SelectValue placeholder="Select Matter">
                     {mi?.title}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {matters.map((t, i) => (
+                  {matters.map((t: any, i: number) => (
                     <SelectItem value={t} key={i}>
                       {t.title}
                     </SelectItem>
@@ -219,9 +252,10 @@ export default function DeadlinesPage() {
         </div>
       </TopNavBar>
       <Table
-        data={deadlines
+        data={mappedDeadlines
           .filter((d) => {
-            if (matters.find((m) => m.id == d.matter_id)?.client_id == client) {
+            if (client === "all-clients") return true;
+            if (matters.find((m: any) => m.id == d.matter_id)?.client_id == client) {
               return true
             } else {
               return false
@@ -231,6 +265,14 @@ export default function DeadlinesPage() {
         columns={deadlineColumns}
         getRowId={(d) => d.id}
         pageSize={20}
+        onRowClick={handleEditDeadline}
+      />
+      <DeadlineSheet
+        open={deadlineSheet}
+        onClose={() => setDeadlineSheet(false)}
+        initial={editingDeadline}
+        matters={matters}
+        onSaved={() => { refetchDeadlines(); setDeadlineSheet(false) }}
       />
     </div>
   )

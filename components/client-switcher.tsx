@@ -1,7 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { ChevronDown, ChevronsUpDown, Plus } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronsUpDown,
+  LandmarkIcon,
+  ListChecks,
+  Plus,
+} from "lucide-react"
 
 import {
   DropdownMenu,
@@ -19,21 +25,30 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Client } from "@/lib/models"
+import { ApiClient } from "@/lib/api"
 import { useClient } from "@/app/client-context"
+import { ClientSheet } from "@/components/entity-sheets"
 
-export function ClientSwitcher({ clients }: { clients: Client[] }) {
+export function ClientSwitcher({
+  clients,
+  className,
+  onRefresh,
+}: {
+  clients: ApiClient[]
+  className?: string
+  onRefresh?: () => void
+}) {
   const { isMobile } = useSidebar()
   const { client, setClient } = useClient()
+  const [sheetOpen, setSheetOpen] = React.useState(false)
 
-  const [activeTeam, setActiveTeam] = React.useState(() => {
-    const a = clients.find((x) => x.id === client)
-
-    return {
-      id: a?.id ?? "",
-      name: a?.name ?? "",
-    }
-  })
+  const activeTeam = React.useMemo(() => {
+    if (client === "all-clients")
+      return { id: "all-clients", name: "All Clients" }
+    const found = clients.find((c) => c.id === client)
+    if (found) return { id: found.id, name: found.name }
+    return { id: "all-clients", name: "All Clients" }
+  }, [client, clients])
   if (!activeTeam) {
     return null
   }
@@ -46,10 +61,20 @@ export function ClientSwitcher({ clients }: { clients: Client[] }) {
             render={
               <SidebarMenuButton
                 // size="lg"
-                className="flex w-auto flex-row items-center gap-2 py-3 group-data-[collapsible=icon]:px-1! data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                className={`${className} flex w-auto flex-row items-center gap-2 py-3 group-data-[collapsible=icon]:px-1! data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground`}
               >
                 <div className="size-6/ flex aspect-square items-center justify-center rounded-lg bg-sidebar-primary p-[0.3rem] text-sidebar-primary-foreground">
-                  <img src={activeTeam.id} className="h-5 w-auto" />
+                  {/*
+                  <img
+                    src={
+                      activeTeam.id == "all-clients"
+                        ? `/all-clients.png`
+                        : `/${activeTeam.id}.png`
+                    }
+                    className="size-3!"
+                  />
+                   */}
+                  <LandmarkIcon />
                   {/*
                   <activeTeam.logo className="h-[0.95rem] w-auto" />
                    */}
@@ -58,10 +83,6 @@ export function ClientSwitcher({ clients }: { clients: Client[] }) {
                   <span className="truncate font-medium">
                     {activeTeam.name}
                   </span>
-                  {/*
-
-                  <span className="truncate text-xs">{activeTeam.plan}</span>
-                      */}
                 </div>
                 <ChevronDown className="ml-auto" />
               </SidebarMenuButton>
@@ -80,22 +101,28 @@ export function ClientSwitcher({ clients }: { clients: Client[] }) {
             </DropdownMenuGroup>
             <DropdownMenuItem
               onClick={() => {
-                setActiveTeam({ id: "", name: "All Clients" })
-                setClient("")
+                setClient("all-clients")
               }}
               className="gap-2 p-2"
-            ></DropdownMenuItem>
+            >
+              <div className="flex size-6 items-center justify-center rounded-md border">
+                <ListChecks className="size-4!" />
+              </div>
+              All Clients{" "}
+            </DropdownMenuItem>
             {clients.map((team, index) => (
               <DropdownMenuItem
                 key={team.name}
                 onClick={() => {
-                  setActiveTeam(team)
                   setClient(team.id)
                 }}
                 className="gap-2 p-2"
               >
                 <div className="flex size-6 items-center justify-center rounded-md border">
-                  <img src={activeTeam.id} className="h-5 w-auto" />
+                  {/*
+                  <img src={`/${team.id}.png`} className="h-4 w-auto" />
+            */}
+                  <LandmarkIcon />
                 </div>
                 {team.name}
               </DropdownMenuItem>
@@ -109,9 +136,32 @@ export function ClientSwitcher({ clients }: { clients: Client[] }) {
                 Add Client
               </div>
             </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                setSheetOpen(true)
+              }}
+              className="gap-2 p-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md border bg-background">
+                <Plus className="size-4" />
+              </div>
+              <div className="font-medium text-muted-foreground">
+                New Client
+              </div>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
+      <ClientSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onSaved={() => {
+          onRefresh?.()
+          setSheetOpen(false)
+        }}
+      />
     </SidebarMenu>
   )
 }

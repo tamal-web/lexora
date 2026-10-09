@@ -495,6 +495,7 @@ function ColumnFilter<T>({
  * ==========================================================================*/
 
 export interface TableProps<T> {
+  onRowClick?: (row: T) => void;
   data: T[]
   /** Array order = column display order, index 0 leftmost. */
   columns: Column<T>[]
@@ -508,6 +509,7 @@ export function Table<T extends object>({
   columns,
   getRowId,
   pageSize = 10,
+  onRowClick,
 }: TableProps<T>) {
   const [sort, setSort] = useState<SortState<T> | null>(null)
   const [filters, setFilters] = useState<FilterState<T>>({})
